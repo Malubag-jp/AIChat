@@ -1,9 +1,9 @@
 ### Spring Boot / Spring AI Sensitive Files ###
 # Application properties and YAML configs (do not commit secrets)
-application.properties
-application.yml
-application-*.properties
-application-*.yml
+#application.properties
+#application.yml
+#application-*.properties
+#application-*.yml
 
 # Environment files
 .env
