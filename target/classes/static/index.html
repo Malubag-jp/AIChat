@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>AI Chat with Llama 3</title>
+    <meta charset="UTF-8"/>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .chat-box {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            background: #fafafa;
+        }
+        .message {
+            font-weight: bold;
+            margin-top: 10px;
+            color: #333;
+        }
+        .response {
+            margin-top: 10px;
+            color: #2c5aa0;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+        #message {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        #submitBtn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #submitBtn:disabled {
+            background-color: #cccccc;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>AI Chat (Llama 3 8B) - API Test</h1>
+
+    <form id="chatForm">
+        <div>
+            <label for="message">Your Message:</label><br/>
+            <input type="text" id="message" name="message" th:value="${message}" required/>
+        </div>
+        <br/>
+        <button type="submit" id="submitBtn">Send</button>
+    </form>
+
+    <div class="chat-box" id="responseContainer" style="display: none;">
+        <div class="message">You: <span id="userMessage"></span></div>
+        <div class="response">AI: <span id="aiResponse"></span></div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('chatForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const message = document.getElementById('message').value;
+        const submitBtn = document.getElementById('submitBtn');
+
+        document.getElementById('userMessage').textContent = message;
+        document.getElementById('aiResponse').textContent = '';
+        document.getElementById('responseContainer').style.display = 'block';
+        submitBtn.disabled = true;
+
+        try {
+            const response = await fetch('/api/chat/stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: message })
+            });
+
+            if (!response.ok) {
+                throw new Error('Stream request failed');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullResponse = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+
+                if (done) {
+                    break;
+                }
+
+                const chunk = decoder.decode(value);
+                // Parse the JSON response
+                if (chunk.startsWith('data:')) {
+                    const jsonData = chunk.substring(5).trim();
+                    if (jsonData) {
+                        try {
+                            const responseObj = JSON.parse(jsonData);
+                            fullResponse = responseObj.response;
+                            document.getElementById('aiResponse').textContent = fullResponse;
+                        } catch (e) {
+                            console.error('Error parsing JSON:', e);
+                        }
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('aiResponse').textContent = 'Error: ' + error.message;
+        } finally {
+            submitBtn.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>

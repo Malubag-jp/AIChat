@@ -1,0 +1,8 @@
+com\srllc\spring_ai_app\aichat\service\ChatService.class
+com\srllc\spring_ai_app\aichat\controller\ChatApiController.class
+com\srllc\spring_ai_app\aichat\service\Impl\ChatServiceImpl.class
+com\srllc\spring_ai_app\aichat\AichatApplication.class
+com\srllc\spring_ai_app\aichat\controller\ChatController.class
+com\srllc\spring_ai_app\aichat\config\OpenApiConfig.class
+com\srllc\spring_ai_app\aichat\dto\ChatResponse.class
+com\srllc\spring_ai_app\aichat\dto\ChatRequest.class
