@@ -190,7 +190,6 @@ function formatResponseText(text) {
         submitBtn.disabled = true;
 
 if (useStream) {
-    // Use streaming with EventSource for real-time response
     const eventSource = new EventSource('/chat/stream?message=' + encodeURIComponent(message));
     let fullResponse = '';
 
@@ -199,7 +198,6 @@ if (useStream) {
         const data = JSON.parse(event.data);
         if (data.response) {
             fullResponse += data.response;
-            // Apply client-side formatting as backup
             const formattedResponse = formatResponseText(fullResponse);
             aiResponseElement.textContent = formattedResponse;
             aiResponseElement.parentElement.scrollTop = aiResponseElement.parentElement.scrollHeight;
@@ -233,7 +231,6 @@ if (useStream) {
         submitBtn.disabled = false;
     };
 } else {
-            // Use AJAX endpoint for non-streaming responses
             const formData = new FormData();
             formData.append('message', message);
 
@@ -248,7 +245,6 @@ if (useStream) {
                 return response.json();
             })
             .then(data => {
-                // Apply typing effect to the response
                 return typeText(aiResponseElement, data.response, 20);
             })
             .then(() => {

@@ -124,7 +124,6 @@
                     if (jsonData) {
                         try {
                             const responseObj = JSON.parse(jsonData);
-                            // For API, we expect complete sentences, so just display the full response
                             fullResponse = responseObj.response;
                             document.getElementById('aiResponse').textContent = fullResponse;
                         } catch (e) {

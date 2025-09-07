@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -23,7 +22,6 @@ public class ChatServiceImpl implements ChatService {
 
     private final ChatModel chatModel;
 
-    // Patterns for formatting
     private static final Pattern TEMPERATURE_PATTERN = Pattern.compile("(\\d+)(°C|°F|°)");
     private static final Pattern NUMBER_WITH_LETTERS = Pattern.compile("(\\d+)([A-Za-z°])");
     private static final Pattern PUNCTUATION_WITHOUT_SPACE = Pattern.compile("([.,!?;:])(?=\\S)");
@@ -37,7 +35,6 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public Flux<String> getChatResponseStream(String message) {
-        // For web UI - return character-by-character streaming
         Prompt prompt = new Prompt(new UserMessage(message));
 
         return chatModel.stream(prompt)
@@ -59,7 +56,6 @@ public class ChatServiceImpl implements ChatService {
                 });
     }
 
-    // For API streaming - return complete formatted responses
     public Flux<String> getApiChatResponseStream(String message) {
         AtomicReference<StringBuilder> completeResponse = new AtomicReference<>(new StringBuilder());
         Prompt prompt = new Prompt(new UserMessage(message));
@@ -72,7 +68,6 @@ public class ChatServiceImpl implements ChatService {
                         String chunk = assistantMessage.getText();
                         completeResponse.get().append(chunk);
 
-                        // Return the chunk for immediate processing (but we'll filter this out)
                         return chunk;
                     } catch (Exception e) {
                         log.error("Error extracting text content", e);
@@ -85,7 +80,7 @@ public class ChatServiceImpl implements ChatService {
                     String formattedResponse = formatResponse(completeResponse.get().toString());
                     return Flux.just(formattedResponse);
                 }))
-                .timeout(Duration.ofSeconds(120)) // Longer timeout for complete responses
+                .timeout(Duration.ofSeconds(120))
                 .onErrorResume(e -> {
                     log.warn("API Stream timeout or error: {}", e.getMessage());
                     String currentResponse = completeResponse.get().toString();
@@ -98,7 +93,6 @@ public class ChatServiceImpl implements ChatService {
                 });
     }
 
-    // Alternative: Simple non-streaming approach for API
     public Flux<String> getApiChatResponseStreamSimple(String message) {
         return Flux.defer(() -> {
                     try {
@@ -118,14 +112,12 @@ public class ChatServiceImpl implements ChatService {
             return "I'm here to help! What would you like to know?";
         }
 
-        // Apply all formatting rules
         response = formatText(response);
 
         return response.trim();
     }
 
     private String formatText(String text) {
-        // 1. Fix temperature and number formatting
         text = NUMBER_WITH_LETTERS.matcher(text).replaceAll(match -> {
             String number = match.group(1);
             String letter = match.group(2);
@@ -136,19 +128,14 @@ public class ChatServiceImpl implements ChatService {
             return number + " " + letter;
         });
 
-        // 2. Fix punctuation spacing
         text = PUNCTUATION_WITHOUT_SPACE.matcher(text).replaceAll("$1 ");
 
-        // 3. Ensure space after commas
         text = text.replaceAll(",([^ ])", ", $1");
 
-        // 4. Add paragraph breaks after sentences
         text = SENTENCE_END.matcher(text).replaceAll("$1\n\n");
 
-        // 5. Clean up multiple spaces
         text = text.replaceAll(" +", " ");
 
-        // 6. Clean up multiple newlines
         text = text.replaceAll("\\n{3,}", "\n\n");
 
         return text;

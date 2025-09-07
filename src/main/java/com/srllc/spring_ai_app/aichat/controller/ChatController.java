@@ -43,7 +43,6 @@ public class ChatController {
     @PostMapping(value = "/chat/ajax", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public ChatResponse chatAjax(@RequestParam("message") String message) {
-        // Always use the full AI model
         String response = chatService.getChatResponse(message);
         return new ChatResponse(response);
     }
@@ -70,7 +69,6 @@ public class ChatController {
                                 },
                                 error -> {
                                     try {
-                                        // Send final formatted response on error
                                         String finalResponse = completeResponse.toString();
                                         emitter.send(SseEmitter.event()
                                                 .data(new ChatResponse(finalResponse))
@@ -82,7 +80,6 @@ public class ChatController {
                                 },
                                 () -> {
                                     try {
-                                        // Send final complete formatted response
                                         String finalResponse = completeResponse.toString();
                                         emitter.send(SseEmitter.event()
                                                 .data(new ChatResponse(finalResponse))

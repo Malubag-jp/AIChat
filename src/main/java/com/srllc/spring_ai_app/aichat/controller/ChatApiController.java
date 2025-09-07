@@ -14,8 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
-import java.time.Duration;
-
 @RestController
 @RequestMapping("/api/chat")
 @Tag(name = "Chat API", description = "API for interacting with Llama 3 8B via Ollama")
@@ -34,8 +32,6 @@ public class ChatApiController {
     public ResponseEntity<ChatResponse> chat(
             @Parameter(description = "The message to send to AI", required = true)
             @RequestBody ChatRequest request) {
-
-        // Always use the full AI model for complete responses
         String response = chatService.getChatResponse(request.getMessage());
         return ResponseEntity.ok(new ChatResponse(response));
     }
@@ -48,8 +44,6 @@ public class ChatApiController {
     public Flux<ChatResponse> chatStream(
             @Parameter(description = "The message to send to AI", required = true)
             @RequestBody ChatRequest request) {
-
-        // Use the simple non-streaming approach for API to ensure complete responses
         return chatServiceImpl.getApiChatResponseStreamSimple(request.getMessage())
                 .map(ChatResponse::new);
     }
