@@ -14,6 +14,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
+
 @RestController
 @RequestMapping("/api/chat")
 @Tag(name = "Chat API", description = "API for interacting with Llama 3 8B via Ollama")
@@ -21,18 +23,19 @@ import reactor.core.publisher.Flux;
 public class ChatApiController {
 
     private final ChatService chatService;
-    private final ChatServiceImpl chatServiceImpl; // Inject the implementation directly
+    private final ChatServiceImpl chatServiceImpl;
 
     @PostMapping
     @Operation(
             summary = "Send a message to AI",
-            description = "Send a message to the Llama 3 8B model and get a response"
+            description = "Send a message to the Llama 3 8B model and get a complete response"
     )
     @ApiResponse(responseCode = "200", description = "Successful response from AI")
     public ResponseEntity<ChatResponse> chat(
             @Parameter(description = "The message to send to AI", required = true)
             @RequestBody ChatRequest request) {
 
+        // Always use the full AI model for complete responses
         String response = chatService.getChatResponse(request.getMessage());
         return ResponseEntity.ok(new ChatResponse(response));
     }
@@ -40,13 +43,14 @@ public class ChatApiController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @Operation(
             summary = "Stream chat response",
-            description = "Get a streaming response from the AI model"
+            description = "Get a complete response from the AI model"
     )
     public Flux<ChatResponse> chatStream(
             @Parameter(description = "The message to send to AI", required = true)
             @RequestBody ChatRequest request) {
 
-        return chatServiceImpl.getApiChatResponseStream(request.getMessage())
+        // Use the simple non-streaming approach for API to ensure complete responses
+        return chatServiceImpl.getApiChatResponseStreamSimple(request.getMessage())
                 .map(ChatResponse::new);
     }
 

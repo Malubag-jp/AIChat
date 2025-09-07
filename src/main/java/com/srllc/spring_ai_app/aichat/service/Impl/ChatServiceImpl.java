@@ -10,6 +10,11 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -17,19 +22,26 @@ import reactor.core.publisher.Flux;
 public class ChatServiceImpl implements ChatService {
 
     private final ChatModel chatModel;
-    private StringBuilder buffer = new StringBuilder();
+
+    // Patterns for formatting
+    private static final Pattern TEMPERATURE_PATTERN = Pattern.compile("(\\d+)(°C|°F|°)");
+    private static final Pattern NUMBER_WITH_LETTERS = Pattern.compile("(\\d+)([A-Za-z°])");
+    private static final Pattern PUNCTUATION_WITHOUT_SPACE = Pattern.compile("([.,!?;:])(?=\\S)");
+    private static final Pattern SENTENCE_END = Pattern.compile("([.!?])\\s+");
 
     @Override
     public String getChatResponse(String message) {
-        return chatModel.call(message);
+        String response = chatModel.call(message);
+        return formatResponse(response);
     }
 
     @Override
     public Flux<String> getChatResponseStream(String message) {
-        buffer.setLength(0); // Clear buffer for new request
+        // For web UI - return character-by-character streaming
         Prompt prompt = new Prompt(new UserMessage(message));
 
         return chatModel.stream(prompt)
+                .publishOn(Schedulers.boundedElastic())
                 .map(chatResponse -> {
                     try {
                         AssistantMessage assistantMessage = (AssistantMessage) chatResponse.getResult().getOutput();
@@ -40,94 +52,115 @@ public class ChatServiceImpl implements ChatService {
                     }
                 })
                 .filter(chunk -> chunk != null && !chunk.trim().isEmpty())
-                .concatMap(chunk -> {
-                    buffer.append(chunk);
-                    return processBuffer();
-                })
-                .concatWith(Flux.defer(() -> {
-                    // Emit any remaining content in buffer at the end
-                    if (buffer.length() > 0) {
-                        String remaining = buffer.toString();
-                        buffer.setLength(0);
-                        return Flux.just(remaining);
-                    }
-                    return Flux.empty();
-                }));
+                .timeout(Duration.ofSeconds(60))
+                .onErrorResume(e -> {
+                    log.warn("Stream timeout or error", e);
+                    return Flux.just("Error: Response timed out");
+                });
     }
 
-    // New method specifically for API streaming that returns a single response
+    // For API streaming - return complete formatted responses
     public Flux<String> getApiChatResponseStream(String message) {
-        return Flux.just(chatModel.call(message));
-    }
+        AtomicReference<StringBuilder> completeResponse = new AtomicReference<>(new StringBuilder());
+        Prompt prompt = new Prompt(new UserMessage(message));
 
-    private Flux<String> processBuffer() {
-        Flux<String> words = Flux.empty();
-        String content = buffer.toString();
+        return chatModel.stream(prompt)
+                .publishOn(Schedulers.boundedElastic())
+                .map(chatResponse -> {
+                    try {
+                        AssistantMessage assistantMessage = (AssistantMessage) chatResponse.getResult().getOutput();
+                        String chunk = assistantMessage.getText();
+                        completeResponse.get().append(chunk);
 
-        // Look for the best place to split that preserves punctuation
-        int splitIndex = findOptimalSplitPoint(content);
-
-        if (splitIndex > 0) {
-            String completePart = content.substring(0, splitIndex);
-            String remaining = content.substring(splitIndex);
-
-            // Split into meaningful chunks (words with their punctuation)
-            words = splitIntoMeaningfulChunks(completePart);
-
-            // Reset buffer with remaining content
-            buffer.setLength(0);
-            buffer.append(remaining);
-        }
-
-        return words;
-    }
-
-    private int findOptimalSplitPoint(String text) {
-        // Prefer to split after punctuation followed by space
-        for (int i = text.length() - 1; i > 0; i--) {
-            char currentChar = text.charAt(i);
-
-            // Split after punctuation that's likely to end a sentence
-            if (i > 0 && isSentenceEndingPunctuation(text.charAt(i - 1)) &&
-                    Character.isWhitespace(currentChar)) {
-                return i + 1; // Split after the space
-            }
-
-            // Split after punctuation (without following space)
-            if (isSentenceEndingPunctuation(currentChar) &&
-                    (i == text.length() - 1 || Character.isWhitespace(text.charAt(i + 1)))) {
-                return i + 1;
-            }
-
-            // Split after words (space followed by non-space)
-            if (Character.isWhitespace(currentChar) &&
-                    i + 1 < text.length() &&
-                    !Character.isWhitespace(text.charAt(i + 1))) {
-                return i + 1;
-            }
-        }
-
-        return 0; // No good split point found
-    }
-
-    private boolean isSentenceEndingPunctuation(char c) {
-        return c == '.' || c == '!' || c == '?' || c == ';' || c == ':';
-    }
-
-    private Flux<String> splitIntoMeaningfulChunks(String text) {
-        // Split by spaces but keep punctuation with words
-        String[] parts = text.split("(?<=\\s)|(?=\\s)");
-        return Flux.fromArray(parts)
-                .filter(part -> !part.trim().isEmpty())
-                .map(part -> {
-                    // Ensure punctuation has proper spacing
-                    if (part.matches("^[.,!?;:]$")) {
-                        return part;
-                    } else if (part.matches("^\\s+$")) {
-                        return " ";
+                        // Return the chunk for immediate processing (but we'll filter this out)
+                        return chunk;
+                    } catch (Exception e) {
+                        log.error("Error extracting text content", e);
+                        return "Error: " + e.getMessage();
+                    }
+                })
+                .filter(chunk -> chunk != null && !chunk.trim().isEmpty())
+                .thenMany(Flux.defer(() -> {
+                    // After stream completes, return the complete formatted response
+                    String formattedResponse = formatResponse(completeResponse.get().toString());
+                    return Flux.just(formattedResponse);
+                }))
+                .timeout(Duration.ofSeconds(120)) // Longer timeout for complete responses
+                .onErrorResume(e -> {
+                    log.warn("API Stream timeout or error: {}", e.getMessage());
+                    String currentResponse = completeResponse.get().toString();
+                    if (!currentResponse.isEmpty()) {
+                        String formattedResponse = formatResponse(currentResponse);
+                        return Flux.just(formattedResponse + "\n\n(Note: Response may be incomplete due to processing limits)");
                     } else {
-                        return part.trim() + " ";
+                        return Flux.just("I apologize, but I'm taking longer than expected to generate a response. Please try again with a more specific question or try the non-streaming endpoint at /api/chat");
                     }
                 });
+    }
+
+    // Alternative: Simple non-streaming approach for API
+    public Flux<String> getApiChatResponseStreamSimple(String message) {
+        return Flux.defer(() -> {
+                    try {
+                        String response = getChatResponse(message);
+                        return Flux.just(response);
+                    } catch (Exception e) {
+                        log.error("Error getting API response", e);
+                        return Flux.just("Error: " + e.getMessage());
+                    }
+                })
+                .timeout(Duration.ofSeconds(30))
+                .onErrorResume(e -> Flux.just("Sorry, the response is taking too long. Please try the non-streaming endpoint at /api/chat"));
+    }
+
+    private String formatResponse(String response) {
+        if (response == null || response.trim().isEmpty()) {
+            return "I'm here to help! What would you like to know?";
+        }
+
+        // Apply all formatting rules
+        response = formatText(response);
+
+        return response.trim();
+    }
+
+    private String formatText(String text) {
+        // 1. Fix temperature and number formatting
+        text = NUMBER_WITH_LETTERS.matcher(text).replaceAll(match -> {
+            String number = match.group(1);
+            String letter = match.group(2);
+
+            if (isSpecialCase(number, letter)) {
+                return number + letter;
+            }
+            return number + " " + letter;
+        });
+
+        // 2. Fix punctuation spacing
+        text = PUNCTUATION_WITHOUT_SPACE.matcher(text).replaceAll("$1 ");
+
+        // 3. Ensure space after commas
+        text = text.replaceAll(",([^ ])", ", $1");
+
+        // 4. Add paragraph breaks after sentences
+        text = SENTENCE_END.matcher(text).replaceAll("$1\n\n");
+
+        // 5. Clean up multiple spaces
+        text = text.replaceAll(" +", " ");
+
+        // 6. Clean up multiple newlines
+        text = text.replaceAll("\\n{3,}", "\n\n");
+
+        return text;
+    }
+
+    private boolean isSpecialCase(String number, String letter) {
+        if (number.length() == 4 && number.matches("\\d{4}")) {
+            return true;
+        }
+        if (letter.equals("%") || letter.equals("°")) {
+            return true;
+        }
+        return false;
     }
 }

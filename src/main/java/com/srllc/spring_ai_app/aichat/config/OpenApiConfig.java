@@ -27,27 +27,5 @@ public class OpenApiConfig {
                         .contact(new Contact()
                                 .name("Jhon Paul Malubag")
                                 .email("malubagjp.srbootcamp2025@gmail.com")));
-
-//        OpenAPI()
-//                .info(new Info()
-//                        .title("Mini Shopping System API")
-//                        .version("1.0")
-//                        .description("""
-//                                API Documentation for Mini Shopping System Project
-//
-//                                **Developers**
-//                                - Jhon Paul Malubag
-//                                """)
-//                        .contact(new Contact()
-//                                .name("Jhon Paul Malubag")
-//                                .email("malubagjp.srbootcamp2025@gmail.com")))
-//                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
-//                .components(new Components()
-//                        .addSecuritySchemes("bearerAuth", new SecurityScheme()
-//                                .type(SecurityScheme.Type.HTTP)
-//                                .scheme("bearer")
-//                                .bearerFormat("JWT")
-//                                .name("Authorization")
-//                                .description("Bearer token")));
     }
 }

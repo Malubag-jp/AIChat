@@ -81,47 +81,50 @@
 
 <script>
     document.getElementById('chatForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
+    e.preventDefault();
 
-        const message = document.getElementById('message').value;
-        const submitBtn = document.getElementById('submitBtn');
+    const message = document.getElementById('message').value;
+    const submitBtn = document.getElementById('submitBtn');
 
-        document.getElementById('userMessage').textContent = message;
-        document.getElementById('aiResponse').textContent = '';
-        document.getElementById('responseContainer').style.display = 'block';
-        submitBtn.disabled = true;
+    document.getElementById('userMessage').textContent = message;
+    document.getElementById('aiResponse').textContent = '';
+    document.getElementById('responseContainer').style.display = 'block';
+    submitBtn.disabled = true;
 
-        try {
-            const response = await fetch('/api/chat/stream', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ message: message })
-            });
+    try {
+        const response = await fetch('/api/chat/stream', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ message: message })
+        });
 
-            if (!response.ok) {
-                throw new Error('Stream request failed');
+        if (!response.ok) {
+            throw new Error('Stream request failed');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) {
+                break;
             }
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let fullResponse = '';
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
 
-            while (true) {
-                const { done, value } = await reader.read();
-
-                if (done) {
-                    break;
-                }
-
-                const chunk = decoder.decode(value);
-                // Parse the JSON response
-                if (chunk.startsWith('data:')) {
-                    const jsonData = chunk.substring(5).trim();
+            for (const line of lines) {
+                if (line.startsWith('data:')) {
+                    const jsonData = line.substring(5).trim();
                     if (jsonData) {
                         try {
                             const responseObj = JSON.parse(jsonData);
+                            // For API, we expect complete sentences, so just display the full response
                             fullResponse = responseObj.response;
                             document.getElementById('aiResponse').textContent = fullResponse;
                         } catch (e) {
@@ -130,14 +133,15 @@
                     }
                 }
             }
-
-        } catch (error) {
-            console.error('Error:', error);
-            document.getElementById('aiResponse').textContent = 'Error: ' + error.message;
-        } finally {
-            submitBtn.disabled = false;
         }
-    });
+
+    } catch (error) {
+        console.error('Error:', error);
+        document.getElementById('aiResponse').textContent = 'Error: ' + error.message;
+    } finally {
+        submitBtn.disabled = false;
+    }
+});
 </script>
 </body>
 </html>
